@@ -1,0 +1,80 @@
+# WhatsApp MCP + opencode bridge — single image (bridge + opencode serve).
+# Pulls flixyudh/project:wacode from Docker Hub.
+#
+# Quick start:
+#   MCP_TOKEN=$(openssl rand -hex 32) \
+#   WHATSAPP_WHITELIST=6281234567890 \
+#   WHATSAPP_PHONE_NUMBER=6281234567890 \
+#   ANTHROPIC_API_KEY=... \
+#   docker compose up -d
+#   docker compose logs -f        # first boot prints the pairing code / QR
+#
+# Or put the same variables in a `.env` file next to this compose.yml
+# (compose reads it automatically for ${...} interpolation).
+# Mandatory: MCP_TOKEN, WHATSAPP_WHITELIST (+ WHATSAPP_PHONE_NUMBER in
+# pairing mode), and model auth — a provider key or Zen login (see below).
+
+services:
+  wacode:
+    image: flixyudh/project:wacode
+    container_name: wacode
+    restart: unless-stopped
+    ports:
+      # MCP stays localhost-only. Remote access is opt-in via
+      # `ssh -L 8787:127.0.0.1:8787 user@host` — never publish publicly.
+      - "127.0.0.1:${MCP_PORT:-8787}:${MCP_PORT:-8787}"
+    environment:
+      # --- WhatsApp ---
+      WHATSAPP_WHITELIST: ${WHATSAPP_WHITELIST:?WHATSAPP_WHITELIST is required, e.g. WHATSAPP_WHITELIST=6281234567890}
+      WHATSAPP_LOGIN_MODE: ${WHATSAPP_LOGIN_MODE:-pairing} # pairing (headless) | qr
+      WHATSAPP_PHONE_NUMBER: ${WHATSAPP_PHONE_NUMBER:-} # mandatory in pairing mode: country-code digits, no + / spaces / trunk 0
+      WHATSAPP_SHARED_SECRET: ${WHATSAPP_SHARED_SECRET:-} # optional extra gate: inbound must contain this keyword
+      WHATSAPP_LID_MAP: ${WHATSAPP_LID_MAP:-} # optional static LID→number map, lid:pn,lid:pn (see README "LID note")
+      # --- MCP HTTP ---
+      MCP_BIND: 127.0.0.1
+      MCP_PORT: ${MCP_PORT:-8787}
+      MCP_TOKEN: ${MCP_TOKEN:?MCP_TOKEN is required, min 16 chars random secret}
+      # --- Bridge behavior (optional, defaults shown) ---
+      AUTO_READ_SCOPE: ${AUTO_READ_SCOPE:-whitelist} # whitelist | all
+      SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-6}
+      SESSION_COMPACT_AFTER: ${SESSION_COMPACT_AFTER:-40}
+      RATE_LIMIT_PER_SENDER_SECONDS: ${RATE_LIMIT_PER_SENDER_SECONDS:-5}
+      # --- Opencode (serve runs in-container; whatsapp-bridge agent baked in) ---
+      OPENCODE_HOST: 127.0.0.1
+      OPENCODE_PORT: ${OPENCODE_PORT:-4096}
+      OPENCODE_AGENT: ${OPENCODE_AGENT:-whatsapp-bridge}
+      OPENCODE_PASSWORD: ${OPENCODE_PASSWORD:-} # set ONLY together with OPENCODE_SERVER_PASSWORD below (same value)
+      OPENCODE_TIMEOUT_MS: ${OPENCODE_TIMEOUT_MS:-120000}
+      OPENCODE_YOLO: ${OPENCODE_YOLO:-true} # auto-approve (no --yolo flag on serve; via permission=allow). Agent denies still win.
+      # --- Model auth (pick ONE): provider key(s) and/or Zen login ---
+      # Without any of these opencode serve starts but has no model to answer with.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # Alternative: OpenCode Zen free managed models. Log in once on the host
+      # (`opencode auth login`), then mount the credential file read-only:
+      # - ~/.local/share/opencode/auth.json:/root/.local/share/opencode/auth.json:ro
+      # OPENCODE_SERVER_PASSWORD: ${OPENCODE_SERVER_PASSWORD:-} # optional serve password; must mirror into OPENCODE_PASSWORD
+      # --- Runtime ---
+      LOG_LEVEL: ${LOG_LEVEL:-info} # fatal,error,warn,info,debug,trace
+      TZ: ${TZ:-Asia/Jakarta}
+    volumes:
+      # Auth + SQLite — back this volume up (DESIGN §6).
+      - ./wacode-data:/app/data
+      # Opencode's own sessions/projects.
+      - ./opencode-data:/root/.local/share/opencode
+      # Project instructions for the agent. opencode serve runs with cwd /app,
+      # so /app/AGENTS.md is loaded into every session automatically.
+      # Create ./AGENTS.md on the host and uncomment (read-only, no rebuild;
+      # new sessions pick up edits — send /reset or wait out the TTL):
+      # - ./AGENTS.md:/app/AGENTS.md:ro
+      # Reuse your host opencode config inside the container (e.g. default
+      # model — the bridge never sets one, so serve needs a default from
+      # somewhere). Project /app/opencode.json still wins on conflicts.
+      # No reference to wire up: opencode merges global + project automatically:
+      # - ~/.config/opencode/opencode.jsonc:/root/.config/opencode/opencode.jsonc:ro
+    # Image HEALTHCHECK hits /healthz (503/unhealthy until paired — expected).
+
+networks:
+  default:
+    external: true
+    name: nginx
