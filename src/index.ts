@@ -38,7 +38,7 @@ async function main(): Promise<void> {
       whitelistSize: cfg.WHATSAPP_WHITELIST.length,
       sharedSecretGate: Boolean(cfg.WHATSAPP_SHARED_SECRET),
     },
-    "whatsapp-opencode-bridge starting",
+    "wacode starting",
   );
 
   if (cfg.OPENCODE_AGENT === "build" || cfg.OPENCODE_AGENT === "plan") {

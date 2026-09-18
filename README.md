@@ -12,7 +12,7 @@ type router + backoff reconnect, rate limiting, chunking, typing presence,
 ## Quick start
 
 ```bash
-cd whatsapp-opencode-bridge
+cd wacode
 cp .env.example .env
 # edit .env: WHATSAPP_WHITELIST, MCP_TOKEN (≥16 chars), WHATSAPP_PHONE_NUMBER …
 pnpm install

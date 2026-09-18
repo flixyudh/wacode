@@ -1,5 +1,5 @@
 {
-  "name": "whatsapp-opencode-bridge",
+  "name": "wacode",
   "version": "0.1.2",
   "description": "Standalone TypeScript daemon: WhatsApp as MCP tools + auto-forward bridge to a least-privilege opencode agent.",
   "type": "module",
