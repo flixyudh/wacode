@@ -16,6 +16,7 @@ import { chunkText } from "./chunker.js";
 import { LidResolver } from "./lid-resolver.js";
 import { OpencodeClient } from "./opencode-client.js";
 import { RateLimiter } from "./rate-limiter.js";
+import { describeError } from "./resilient-fetch.js";
 import { SessionManager, isResetCommand } from "./session-manager.js";
 import { Whitelist, isGroupJid, isLidJid, passesSharedSecret, pickIdentityJid } from "./whitelist.js";
 
@@ -312,7 +313,7 @@ export function attachListener(deps: ListenerDeps): void {
         try {
           reply = await opencode.sendMessage(session.opencodeSessionId, text);
         } catch (e) {
-          log.error({ err: (e as Error).message, chatJid }, "opencode call failed");
+          log.error({ err: describeError(e), chatJid }, "opencode call failed");
           try {
             await sock.sendPresenceUpdate("paused", chatJid);
           } catch {
@@ -368,7 +369,7 @@ export function attachListener(deps: ListenerDeps): void {
           log.info({ identityJid }, "session compacted (restarted); next message starts fresh");
         }
       } catch (e) {
-        log.error({ err: (e as Error).message }, "listener failed on message");
+        log.error({ err: describeError(e) }, "listener failed on message");
       }
     }
   }));

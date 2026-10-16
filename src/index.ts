@@ -65,7 +65,7 @@ async function main(): Promise<void> {
   const sessions = new SessionManager(store, cfg.SESSION_TTL_HOURS, cfg.SESSION_COMPACT_AFTER);
   const limiter = new RateLimiter(cfg.RATE_LIMIT_PER_SENDER_SECONDS);
   const dedupeHot = new LruDedupe(2000);
-  const opencode = new OpencodeClient(cfg);
+  const opencode = new OpencodeClient(cfg, { logger });
 
   const conn = await createWaConnection({ cfg, logger });
   const { sock, getState, close: closeWa } = conn;

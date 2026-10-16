@@ -1,5 +1,7 @@
 import { createOpencodeClient } from "@opencode-ai/sdk";
+import type { Logger } from "pino";
 import type { AppConfig } from "../config.js";
+import { createResilientFetch, describeError, type FetchLike } from "./resilient-fetch.js";
 
 /**
  * Thin wrapper around the opencode server SDK.
@@ -13,6 +15,12 @@ const UNTRUSTED_PREFIX =
 
 type SdkClient = ReturnType<typeof createOpencodeClient>;
 
+export interface OpencodeClientDeps {
+  logger?: Logger;
+  /** Test seam: raw fetch used under the transport-retry wrapper. */
+  fetch?: FetchLike;
+}
+
 export class OpencodeClient {
   private client: SdkClient;
   private baseUrl: string;
@@ -20,12 +28,26 @@ export class OpencodeClient {
   private password?: string;
   private timeoutMs: number;
 
-  constructor(cfg: Pick<AppConfig, "OPENCODE_HOST" | "OPENCODE_PORT" | "OPENCODE_AGENT" | "OPENCODE_PASSWORD" | "OPENCODE_TIMEOUT_MS">) {
+  constructor(
+    cfg: Pick<AppConfig, "OPENCODE_HOST" | "OPENCODE_PORT" | "OPENCODE_AGENT" | "OPENCODE_PASSWORD" | "OPENCODE_TIMEOUT_MS">,
+    deps: OpencodeClientDeps = {},
+  ) {
     this.baseUrl = `http://${cfg.OPENCODE_HOST}:${cfg.OPENCODE_PORT}`;
     this.agent = cfg.OPENCODE_AGENT;
     this.password = cfg.OPENCODE_PASSWORD || undefined;
     this.timeoutMs = cfg.OPENCODE_TIMEOUT_MS;
-    this.client = createOpencodeClient({ baseUrl: this.baseUrl });
+    // Retry transport-level blips (e.g. the first request after an idle gap):
+    // opencode serve can drop the connection before responding, which Node's
+    // fetch reports as `TypeError: fetch failed`. Without this the bridge gave
+    // up and replied "Bridge error talking to the agent" for a retryable blip.
+    const fetchImpl = createResilientFetch(deps.fetch ?? ((request) => globalThis.fetch(request)), {
+      onRetry: ({ attempt, error }) =>
+        deps.logger?.warn(
+          { attempt, err: describeError(error) },
+          "opencode request hit a transport error, retrying",
+        ),
+    });
+    this.client = createOpencodeClient({ baseUrl: this.baseUrl, fetch: fetchImpl });
   }
 
   private authHeaders(): Record<string, string> {
