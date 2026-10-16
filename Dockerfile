@@ -46,6 +46,10 @@ RUN pnpm install --frozen-lockfile --prod --no-optional && pnpm store prune
 COPY --from=bridge-build /app/dist ./dist
 COPY --from=opencode /usr/local/bin/opencode /usr/local/bin/opencode
 COPY .env.example ./.env.example
+# Default agent instructions (/app/AGENTS.md). A consumer can override them by
+# mounting their own ./AGENTS.md over /app/AGENTS.md — writable, so the agent
+# can edit the host file (see compose.yml).
+COPY docker/AGENTS.md /app/AGENTS.md
 # Least-privilege whatsapp-bridge agent, auto-discovered by `opencode serve`
 # from the project dir (/app).
 COPY .opencode ./.opencode

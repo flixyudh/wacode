@@ -204,11 +204,13 @@ fully unconstrained, which is why the serve port stays container-internal.
 Set `OPENCODE_YOLO=false` to disable. Never set `OPENCODE_AGENT=yolo` unless
 every whitelisted sender is fully trusted.
 
-**Agent instructions (AGENTS.md):** serve runs with cwd `/app`, so mount a
-file there — no rebuild needed:
+**Agent instructions (AGENTS.md):** a sensible default ships in the image at
+`/app/AGENTS.md` (`docker/AGENTS.md`), so nothing is required. To use your own,
+mount it over the default — **read-write** (no `:ro`), so the agent can edit
+your host file:
 ```yaml
 volumes:
-  - ./AGENTS.md:/app/AGENTS.md:ro
+  - ./AGENTS.md:/app/AGENTS.md
 ```
 It's loaded into every session automatically; existing sessions pick it up
 on `/reset`, compaction restart, or TTL expiry. Keep it short and

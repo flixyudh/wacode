@@ -64,11 +64,12 @@ services:
       - ./wacode-data:/app/data
       # Opencode's own sessions/projects.
       - ./opencode-data:/root/.local/share/opencode
-      # Project instructions for the agent. opencode serve runs with cwd /app,
-      # so /app/AGENTS.md is loaded into every session automatically.
-      # Create ./AGENTS.md on the host and uncomment (read-only, no rebuild;
-      # new sessions pick up edits — send /reset or wait out the TTL):
-      # - ./AGENTS.md:/app/AGENTS.md:ro
+      # Agent instructions. opencode serve runs with cwd /app, so /app/AGENTS.md
+      # is loaded into every session automatically. A sensible default ships in
+      # the image, so no mount is needed. Uncomment to override it with your own
+      # ./AGENTS.md — mounted read-write (NOT :ro) so the agent can edit it; new
+      # sessions pick up edits (send /reset or wait out the TTL):
+      # - ./AGENTS.md:/app/AGENTS.md
       # Reuse your host opencode config inside the container (e.g. default
       # model — the bridge never sets one, so serve needs a default from
       # somewhere). Project /app/opencode.json still wins on conflicts.
