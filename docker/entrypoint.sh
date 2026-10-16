@@ -48,7 +48,7 @@ probe_opencode() {
   if command -v curl >/dev/null 2>&1; then
     curl -fs --noproxy '*' --connect-timeout 2 --max-time 3 "$1" >/dev/null 2>&1
   else
-    node -e 'fetch(process.argv[1]).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))' "$1" >/dev/null 2>&1
+    node -e 'const c=new AbortController();setTimeout(()=>c.abort(),3000);fetch(process.argv[1],{signal:c.signal}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))' "$1" >/dev/null 2>&1
   fi
 }
 
@@ -73,9 +73,13 @@ echo "[entrypoint] opencode healthy, starting bridge"
 node dist/index.js &
 BRIDGE_PID=$!
 
-# Exit when the first of the two exits (bash 4.3+).
-wait -n "${OPENCODE_PID}" "${BRIDGE_PID}"
-CODE=$?
+# Exit when the first of the two exits (bash 4.3+). Capture the status without
+# tripping `set -e`, so the peer is always stopped and the reason is logged.
+if wait -n "${OPENCODE_PID}" "${BRIDGE_PID}"; then
+  CODE=0
+else
+  CODE=$?
+fi
 echo "[entrypoint] a supervised process exited (code ${CODE}), stopping the other"
 kill "${OPENCODE_PID}" "${BRIDGE_PID}" 2>/dev/null || true
 wait 2>/dev/null || true

@@ -171,11 +171,11 @@ stops so the restart policy kicks in.
 docker build -t flixyudh/project:wacode .
 docker push flixyudh/project:wacode   # after `docker login`
 
-# Run (everyone): pulls the published tag, see compose.yml for all env
+# Run (everyone): pulls the published tag, see compose.yml for all env.
+# No model key needed — the default is the free opencode/big-pickle.
 MCP_TOKEN=$(openssl rand -hex 32) \
 WHATSAPP_WHITELIST=6281234567890 \
 WHATSAPP_PHONE_NUMBER=6281234567890 \
-ANTHROPIC_API_KEY=... \
 docker compose up -d
 docker compose logs -f   # first boot prints the pairing code / QR
 ```
@@ -190,6 +190,12 @@ model instead, set `OPENCODE_MODEL` (`provider/model`) **and** its auth:
   mount `-v ~/.local/share/opencode/auth.json:/root/.local/share/opencode/auth.json:ro`.
 If you set `OPENCODE_SERVER_PASSWORD` for serve, set the same value in
 `OPENCODE_PASSWORD` so the bridge can authenticate.
+
+> **Privacy note:** `opencode/big-pickle` is a free OpenCode Zen "stealth"
+> model, offered free for a limited time. During that period the provider may
+> use submitted data to improve the model — so forwarded WhatsApp messages are
+> not private. Set `OPENCODE_MODEL` to a model under your own account if that
+> matters.
 The least-privilege `whatsapp-bridge` agent ships in the image
 (`.opencode/agents/`); `UNHEALTHY` before pairing is expected.
 

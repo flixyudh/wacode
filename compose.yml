@@ -1,18 +1,19 @@
 # WhatsApp MCP + opencode bridge — single image (bridge + opencode serve).
 # Pulls flixyudh/project:wacode from Docker Hub.
 #
-# Quick start:
+# Quick start (no model key needed — the default model is the free
+# `opencode/big-pickle`):
 #   MCP_TOKEN=$(openssl rand -hex 32) \
 #   WHATSAPP_WHITELIST=6281234567890 \
 #   WHATSAPP_PHONE_NUMBER=6281234567890 \
-#   ANTHROPIC_API_KEY=... \
 #   docker compose up -d
 #   docker compose logs -f        # first boot prints the pairing code / QR
 #
 # Or put the same variables in a `.env` file next to this compose.yml
 # (compose reads it automatically for ${...} interpolation).
-# Mandatory: MCP_TOKEN, WHATSAPP_WHITELIST (+ WHATSAPP_PHONE_NUMBER in
-# pairing mode), and model auth — a provider key or Zen login (see below).
+# Mandatory: MCP_TOKEN and WHATSAPP_WHITELIST (+ WHATSAPP_PHONE_NUMBER in
+# pairing mode). A provider key is needed only if you override OPENCODE_MODEL
+# with a paid model (see below).
 
 services:
   wacode:
@@ -67,13 +68,18 @@ services:
       # Agent instructions. opencode serve runs with cwd /app, so /app/AGENTS.md
       # is loaded into every session automatically. A sensible default ships in
       # the image, so no mount is needed. Uncomment to override it with your own
-      # ./AGENTS.md — mounted read-write (NOT :ro) so the agent can edit it; new
-      # sessions pick up edits (send /reset or wait out the TTL):
-      # - ./AGENTS.md:/app/AGENTS.md
-      # Reuse your host opencode config inside the container (e.g. default
-      # model — the bridge never sets one, so serve needs a default from
-      # somewhere). Project /app/opencode.json still wins on conflicts.
-      # No reference to wire up: opencode merges global + project automatically:
+      # ./AGENTS.md — read-write (NOT :ro) so the agent can edit it; new sessions
+      # pick up edits (send /reset or wait out the TTL). Long syntax so a missing
+      # ./AGENTS.md fails loudly instead of Docker creating a directory:
+      # - type: bind
+      #   source: ./AGENTS.md
+      #   target: /app/AGENTS.md
+      #   bind:
+      #     create_host_path: false
+      # Reuse your host opencode config inside the container (e.g. extra
+      # providers). The default model is set per-prompt by the bridge and in
+      # /app/opencode.json, so no default is required. Project /app/opencode.json
+      # still wins on conflicts; opencode merges global + project automatically:
       # - ~/.config/opencode/opencode.jsonc:/root/.config/opencode/opencode.jsonc:ro
     # Image HEALTHCHECK hits /healthz (503/unhealthy until paired — expected).
 
