@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import { OpencodeClient } from "../src/bridge/opencode-client.js";
+import { OpencodeClient, extractText, stripThinking } from "../src/bridge/opencode-client.js";
 import type { FetchLike } from "../src/bridge/resilient-fetch.js";
 
 const cfg = {
   OPENCODE_HOST: "127.0.0.1",
   OPENCODE_PORT: 4096,
   OPENCODE_AGENT: "whatsapp-bridge",
+  OPENCODE_MODEL: "opencode/big-pickle",
   OPENCODE_PASSWORD: "",
   OPENCODE_TIMEOUT_MS: 5000,
 } as const;
@@ -62,5 +63,50 @@ describe("OpencodeClient transport resilience", () => {
 
     await expect(client.createSession()).rejects.toThrow(/timed out after 30ms/);
     expect(calls).toBe(1);
+  });
+
+  it("sends the configured model on every prompt (overrides stale session state)", async () => {
+    let sent: { agent?: string; model?: unknown } = {};
+    const impl: FetchLike = async (req) => {
+      sent = JSON.parse(await req.text());
+      return jsonResponse({ info: {}, parts: [{ type: "text", text: "ok" }] });
+    };
+    const client = new OpencodeClient(cfg, { fetch: impl });
+
+    await expect(client.sendMessage("ses_1", "hi")).resolves.toBe("ok");
+    expect(sent.model).toEqual({ providerID: "opencode", modelID: "big-pickle" });
+    expect(sent.agent).toBe("whatsapp-bridge");
+  });
+});
+
+describe("thinking is not sent to WhatsApp", () => {
+  it("ignores reasoning-typed parts", () => {
+    const text = extractText({
+      parts: [
+        { type: "reasoning", text: "17*23 = 391, so the answer is 391" },
+        { type: "text", text: "391" },
+      ],
+    });
+    expect(text).toBe("391");
+  });
+
+  it("strips a leaked think block", () => {
+    expect(stripThinking("<thinking>17*23 = 391, so 391.</thinking>391")).toBe("391");
+    expect(stripThinking("<think>let me work it out</think>391")).toBe("391");
+  });
+
+  it("strips a stray closing think tag", () => {
+    expect(stripThinking("</think>Output: `hi`")).toBe("Output: `hi`");
+  });
+
+  it("drops an unclosed/truncated thinking block", () => {
+    expect(stripThinking("<thinking>secret reasoning with no close")).toBe("");
+    expect(stripThinking("Part one <think>truncated reason")).toBe("Part one");
+    expect(stripThinking("Answer first<thinking>trailing")).toBe("Answer first");
+  });
+
+  it("drops a text part that is nothing but thinking", () => {
+    const text = extractText({ parts: [{ type: "text", text: "</think>" }, { type: "text", text: "Hello" }] });
+    expect(text).toBe("Hello");
   });
 });

@@ -33,6 +33,14 @@ const envSchema = z.object({
   OPENCODE_HOST: z.string().default("127.0.0.1"),
   OPENCODE_PORT: z.coerce.number().int().min(1).max(65535).default(4096),
   OPENCODE_AGENT: z.string().min(1).default("whatsapp-bridge"),
+  /** provider/model, e.g. `opencode/big-pickle` (free Zen model, no key). */
+  OPENCODE_MODEL: z
+    .string()
+    .default("opencode/big-pickle")
+    .refine((v) => v === "" || /^[^/\s]+\/.+$/.test(v), {
+      message:
+        "must be `provider/model` (e.g. opencode/big-pickle), or empty to use the server's default model",
+    }),
   OPENCODE_PASSWORD: z.string().optional().default(""),
   OPENCODE_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
 

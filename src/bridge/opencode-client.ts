@@ -25,17 +25,32 @@ export class OpencodeClient {
   private client: SdkClient;
   private baseUrl: string;
   private agent: string;
+  /** Explicit provider/model sent on every prompt (overrides stale session state). */
+  private model?: { providerID: string; modelID: string };
   private password?: string;
   private timeoutMs: number;
 
   constructor(
-    cfg: Pick<AppConfig, "OPENCODE_HOST" | "OPENCODE_PORT" | "OPENCODE_AGENT" | "OPENCODE_PASSWORD" | "OPENCODE_TIMEOUT_MS">,
+    cfg: Pick<
+      AppConfig,
+      "OPENCODE_HOST" | "OPENCODE_PORT" | "OPENCODE_AGENT" | "OPENCODE_MODEL" | "OPENCODE_PASSWORD" | "OPENCODE_TIMEOUT_MS"
+    >,
     deps: OpencodeClientDeps = {},
   ) {
     this.baseUrl = `http://${cfg.OPENCODE_HOST}:${cfg.OPENCODE_PORT}`;
     this.agent = cfg.OPENCODE_AGENT;
     this.password = cfg.OPENCODE_PASSWORD || undefined;
     this.timeoutMs = cfg.OPENCODE_TIMEOUT_MS;
+    // "provider/model" → sent on each prompt so a session created under a
+    // different (or missing) default can never silently pick an unavailable
+    // model — which hangs the turn with no response.
+    const slash = (cfg.OPENCODE_MODEL ?? "").indexOf("/");
+    if (slash > 0) {
+      this.model = {
+        providerID: cfg.OPENCODE_MODEL.slice(0, slash),
+        modelID: cfg.OPENCODE_MODEL.slice(slash + 1),
+      };
+    }
     const rawFetch: FetchLike = deps.fetch ?? ((request) => globalThis.fetch(request));
 
     // Hard per-request cap. The SDK has no request-timeout option (its
@@ -58,7 +73,10 @@ export class OpencodeClient {
     };
 
     // Retry only transport-level blips (e.g. the first request after an idle
-    // gap); see resilient-fetch for why a slow/hung server is *not* retried.
+    // gap). undici timeouts are NOT retried (see resilient-fetch): the server
+    // already has the request. Note this can still re-deliver a POST that died
+    // after arrival — acceptable here because the whatsapp-bridge agent is
+    // read-only (no bash/edit), so a duplicate turn has no side effects.
     const fetchImpl = createResilientFetch(timedFetch, {
       onRetry: ({ attempt, error }) =>
         deps.logger?.warn(
@@ -116,24 +134,22 @@ export class OpencodeClient {
   /**
    * Send a user message and wait for the assistant response.
    * Returns the concatenated text parts of the reply.
+   *
+   * The request is bounded by the timeout in `timedFetch` (the SDK has no
+   * timeout option), so no AbortController is needed here.
    */
   async sendMessage(sessionId: string, text: string): Promise<string> {
     const guarded = `${UNTRUSTED_PREFIX}${text}`;
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), this.timeoutMs);
-    try {
-      const res = await this.client.session.prompt({
-        path: { id: sessionId },
-        body: {
-          agent: this.agent,
-          parts: [{ type: "text", text: guarded }],
-        },
-      });
-      if (res.error) throw new Error(`opencode prompt failed: ${JSON.stringify(res.error)}`);
-      return extractText(res.data as unknown as { parts?: Array<{ type?: string; text?: string }> });
-    } finally {
-      clearTimeout(t);
-    }
+    const res = await this.client.session.prompt({
+      path: { id: sessionId },
+      body: {
+        agent: this.agent,
+        ...(this.model ? { model: this.model } : {}),
+        parts: [{ type: "text", text: guarded }],
+      },
+    });
+    if (res.error) throw new Error(`opencode prompt failed: ${JSON.stringify(res.error)}`);
+    return extractText(res.data as unknown as { parts?: Array<{ type?: string; text?: string }> });
   }
 
   async summarizeSession(sessionId: string): Promise<boolean> {
@@ -168,8 +184,28 @@ export class OpencodeClient {
   }
 }
 
+/**
+ * Strip model "thinking" that leaks into the answer text. opencode types
+ * reasoning parts separately (and we ignore those), but reasoning models
+ * (e.g. Big Pickle) sometimes emit inline `<think>`/`</think>` blocks inside a
+ * text part — which must not be sent to WhatsApp.
+ *
+ * Handles paired blocks, a stray/unclosed opening tag (a truncated response:
+ * everything from it to the end is dropped), and stray closing tags.
+ */
+export function stripThinking(text: string): string {
+  return text
+    .replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi, "")
+    .replace(/<think(?:ing)?>[\s\S]*$/i, "")
+    .replace(/<\/?think(?:ing)?>/gi, "")
+    .trim();
+}
+
 export function extractText(data: { parts?: Array<{ type?: string; text?: string }> }): string {
   const parts = data?.parts ?? [];
-  const texts = parts.filter((p) => p?.type === "text" && typeof p.text === "string").map((p) => p.text as string);
+  const texts = parts
+    .filter((p) => p?.type === "text" && typeof p.text === "string")
+    .map((p) => stripThinking(p.text as string))
+    .filter((t) => t.length > 0);
   return texts.join("\n\n").trim();
 }
