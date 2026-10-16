@@ -1,9 +1,12 @@
 import type { Logger } from "pino";
 
 /**
- * Transport-level failures that mean "the request never reached the server"
- * or "the socket died before a response" — safe to retry once. Deliberately
- * excludes HTTP error responses (those surface as `res.error`, not throws).
+ * Transport-level failures safe to retry once. Deliberately excludes:
+ *  - HTTP error responses (those surface as `res.error`, not throws);
+ *  - undici timeouts (`UND_ERR_HEADERS_TIMEOUT` / `UND_ERR_BODY_TIMEOUT` /
+ *    `UND_ERR_ABORTED`): these mean the request *was* delivered and the server
+ *    is still working. Retrying doubles the wait and can run the agent turn
+ *    twice.
  */
 const TRANSPORT_CODES = new Set([
   "ECONNRESET",
@@ -17,9 +20,6 @@ const TRANSPORT_CODES = new Set([
   "ENETUNREACH",
   "UND_ERR_SOCKET",
   "UND_ERR_CONNECT_TIMEOUT",
-  "UND_ERR_HEADERS_TIMEOUT",
-  "UND_ERR_BODY_TIMEOUT",
-  "UND_ERR_ABORTED",
 ]);
 
 const MESSAGE_HINTS =
@@ -41,10 +41,14 @@ export function errorCauseCode(error: unknown): string | undefined {
  * True when an error is a transport/socket failure rather than an HTTP/API
  * error. Node's global `fetch` reports these as `TypeError: fetch failed`
  * with the real reason on `.cause`.
+ *
+ * When a cause code is present it is authoritative (so undici timeouts, which
+ * also say "fetch failed", are correctly rejected); the message heuristic only
+ * applies to coding-less errors (e.g. a bare `TypeError: fetch failed`).
  */
 export function isTransportError(error: unknown): boolean {
   const code = errorCauseCode(error);
-  if (code && TRANSPORT_CODES.has(code)) return true;
+  if (code) return TRANSPORT_CODES.has(code);
   if (error instanceof Error) {
     return MESSAGE_HINTS.test(`${error.name}: ${error.message}`);
   }

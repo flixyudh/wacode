@@ -50,6 +50,8 @@ on missing/invalid config instead of at first request.
 | `SESSION_COMPACT_AFTER` | `40` | summarize-and-restart after N messages |
 | `RATE_LIMIT_PER_SENDER_SECONDS` | `5` | 1 opencode call per window per sender |
 | `OPENCODE_HOST/PORT/AGENT` | `127.0.0.1`/`4096`/`whatsapp-bridge` | dedicated least-privilege agent, never default |
+| `OPENCODE_MODEL` | `opencode/big-pickle` | default model. `big-pickle` is a **free** OpenCode Zen model — no API key needed |
+| `OPENCODE_TIMEOUT_MS` | `120000` | hard per-request cap for opencode calls (a stalled turn fails fast) |
 | `OPENCODE_PASSWORD` | — | set if `opencode serve` uses `OPENCODE_SERVER_PASSWORD` |
 | `DATA_DIR`/`DB_PATH`/`AUTH_DIR` | `./data*` | **back up `data/auth_info/`** — losing it forces re-pair |
 
@@ -180,11 +182,12 @@ docker compose logs -f   # first boot prints the pairing code / QR
 
 Required env inside the container: everything in `.env.example`
 (`WHATSAPP_*`, `MCP_TOKEN`, `OPENCODE_*` — host/port default to the
-in-container `opencode serve`), **plus model auth (pick one)**:
+in-container `opencode serve`). **No model key is required:** the default
+model is the free `opencode/big-pickle` (OpenCode Zen). To use a different
+model instead, set `OPENCODE_MODEL` (`provider/model`) **and** its auth:
 - a provider key (`-e ANTHROPIC_API_KEY=…`, `OPENAI_API_KEY`, …), or
-- OpenCode Zen free models: `opencode auth login` once on the host, then
-  mount `-v ~/.local/share/opencode/auth.json:/root/.local/share/opencode/auth.json:ro`
-  (make sure a Zen model is your default, e.g. `opencode/gpt-5.1-codex`).
+- OpenCode Zen paid models: `opencode auth login` once on the host, then
+  mount `-v ~/.local/share/opencode/auth.json:/root/.local/share/opencode/auth.json:ro`.
 If you set `OPENCODE_SERVER_PASSWORD` for serve, set the same value in
 `OPENCODE_PASSWORD` so the bridge can authenticate.
 The least-privilege `whatsapp-bridge` agent ships in the image

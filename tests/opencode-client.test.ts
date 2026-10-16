@@ -51,4 +51,16 @@ describe("OpencodeClient transport resilience", () => {
     await expect(client.createSession()).rejects.toThrow(/createSession failed/);
     expect(impl).toHaveBeenCalledTimes(1);
   });
+
+  it("aborts a stalled request at OPENCODE_TIMEOUT_MS and does not retry it", async () => {
+    let calls = 0;
+    const neverResolves: FetchLike = () => {
+      calls++;
+      return new Promise<Response>(() => {});
+    };
+    const client = new OpencodeClient({ ...cfg, OPENCODE_TIMEOUT_MS: 30 }, { fetch: neverResolves });
+
+    await expect(client.createSession()).rejects.toThrow(/timed out after 30ms/);
+    expect(calls).toBe(1);
+  });
 });

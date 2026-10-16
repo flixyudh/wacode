@@ -29,6 +29,13 @@ describe("isTransportError", () => {
     expect(isTransportError(new Error("boom"))).toBe(false);
     expect(isTransportError(undefined)).toBe(false);
   });
+
+  it("does NOT treat undici timeouts as transport (server already has the request)", () => {
+    for (const code of ["UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT", "UND_ERR_ABORTED"]) {
+      const err = new TypeError("fetch failed", { cause: Object.assign(new Error("timeout"), { code }) });
+      expect(isTransportError(err), code).toBe(false);
+    }
+  });
 });
 
 describe("createResilientFetch", () => {
@@ -59,6 +66,17 @@ describe("createResilientFetch", () => {
     const fetchImpl = createResilientFetch(impl, { delayMs: 0, retries: 2 });
 
     await expect(fetchImpl(new Request("http://x/y"))).rejects.toThrow("boom");
+    expect(impl).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry an undici headers timeout (the server already got the request)", async () => {
+    const timeout = new TypeError("fetch failed", {
+      cause: Object.assign(new Error("Headers Timeout Error"), { code: "UND_ERR_HEADERS_TIMEOUT" }),
+    });
+    const { impl } = flakyFetch([timeout], new Response("ok"));
+    const fetchImpl = createResilientFetch(impl, { delayMs: 0, retries: 2 });
+
+    await expect(fetchImpl(new Request("http://x/y"))).rejects.toThrow("fetch failed");
     expect(impl).toHaveBeenCalledTimes(1);
   });
 

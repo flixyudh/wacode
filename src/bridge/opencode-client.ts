@@ -36,11 +36,30 @@ export class OpencodeClient {
     this.agent = cfg.OPENCODE_AGENT;
     this.password = cfg.OPENCODE_PASSWORD || undefined;
     this.timeoutMs = cfg.OPENCODE_TIMEOUT_MS;
-    // Retry transport-level blips (e.g. the first request after an idle gap):
-    // opencode serve can drop the connection before responding, which Node's
-    // fetch reports as `TypeError: fetch failed`. Without this the bridge gave
-    // up and replied "Bridge error talking to the agent" for a retryable blip.
-    const fetchImpl = createResilientFetch(deps.fetch ?? ((request) => globalThis.fetch(request)), {
+    const rawFetch: FetchLike = deps.fetch ?? ((request) => globalThis.fetch(request));
+
+    // Hard per-request cap. The SDK has no request-timeout option (its
+    // `signal` is not wired through), so without this a stalled opencode turn
+    // waits out undici's 300s headers timeout and the caller sees nothing for
+    // minutes. Abort at OPENCODE_TIMEOUT_MS and fail with a clear marker.
+    const timedFetch: FetchLike = (request) => {
+      const ctrl = new AbortController();
+      let timer: NodeJS.Timeout;
+      const expired = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          ctrl.abort();
+          const err = new Error(`opencode request timed out after ${this.timeoutMs}ms`);
+          (err as { code?: string }).code = "OPENCODE_TIMEOUT";
+          reject(err);
+        }, this.timeoutMs);
+      });
+      const run = rawFetch(new Request(request, { signal: ctrl.signal }));
+      return Promise.race([run, expired]).finally(() => clearTimeout(timer));
+    };
+
+    // Retry only transport-level blips (e.g. the first request after an idle
+    // gap); see resilient-fetch for why a slow/hung server is *not* retried.
+    const fetchImpl = createResilientFetch(timedFetch, {
       onRetry: ({ attempt, error }) =>
         deps.logger?.warn(
           { attempt, err: describeError(error) },

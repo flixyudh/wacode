@@ -17,13 +17,18 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN pnpm run build
 
-# ---- Stage 2: fetch the latest opencode binary (linux) ----
+# ---- Stage 2: fetch a PINNED opencode binary (linux) ----
 FROM debian:bookworm-slim AS opencode
+# Pin the version: an unpinned `curl ... | bash` install silently moved the
+# image from 1.18.30 to 1.19.2 on rebuild, which broke startup. Bump
+# deliberately (and re-test) when upgrading.
+ARG OPENCODE_VERSION=1.18.30
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl unzip \
   && rm -rf /var/lib/apt/lists/*
-# Official installer (tracks latest). Installs to ~/.opencode/bin/opencode.
-RUN curl -fsSL https://opencode.ai/install | bash \
+# Official installer, pinned to a version (installs to ~/.opencode/bin/opencode).
+# The installer only ships OpenCode 1 ("--version 1.x").
+RUN curl -fsSL https://opencode.ai/install | bash -s -- --version "${OPENCODE_VERSION}" \
   && mv /root/.opencode/bin/opencode /usr/local/bin/opencode \
   && opencode --version
 

@@ -43,11 +43,13 @@ services:
       OPENCODE_HOST: 127.0.0.1
       OPENCODE_PORT: ${OPENCODE_PORT:-4096}
       OPENCODE_AGENT: ${OPENCODE_AGENT:-whatsapp-bridge}
+      OPENCODE_MODEL: ${OPENCODE_MODEL:-opencode/big-pickle} # free Zen model; override with any provider/model
       OPENCODE_PASSWORD: ${OPENCODE_PASSWORD:-} # set ONLY together with OPENCODE_SERVER_PASSWORD below (same value)
       OPENCODE_TIMEOUT_MS: ${OPENCODE_TIMEOUT_MS:-120000}
       OPENCODE_YOLO: ${OPENCODE_YOLO:-true} # auto-approve (no --yolo flag on serve; via permission=allow). Agent denies still win.
-      # --- Model auth (pick ONE): provider key(s) and/or Zen login ---
-      # Without any of these opencode serve starts but has no model to answer with.
+      # --- Model auth (OPTIONAL) ---
+      # The default model is the free `opencode/big-pickle` (OpenCode Zen) and
+      # needs NO key. Only set a provider key to override OPENCODE_MODEL:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       # Alternative: OpenCode Zen free managed models. Log in once on the host
